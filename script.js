@@ -9,10 +9,14 @@ const els = {
 document.addEventListener('DOMContentLoaded', init);
 document.addEventListener('click', () => ui.hideMenu());
 
+
 async function init() {
   document.body.dataset.theme = localStorage.getItem('tashe.theme') || 'dark';
+
+  // Use the preconfigured Apps Script endpoint.
+  api.setBaseUrl(window.TASHE_CONFIG.apiBaseUrl);
+
   bindEvents();
-  if (!window.TASHE_CONFIG.apiBaseUrl) await configureApi();
   await loadRoot();
 }
 
@@ -33,11 +37,6 @@ function bindEvents() {
   els.dropzone.addEventListener('drop', e => uploadFiles([...e.dataTransfer.files]));
 }
 
-async function configureApi() {
-  const url = await ui.prompt({ title: 'Connect Apps Script API', label: 'Paste deployed Web App URL' });
-  if (!url) throw new Error('Apps Script API URL is required.');
-  api.setBaseUrl(url);
-}
 
 async function loadRoot() { state.folderId = window.TASHE_CONFIG.rootFolderId; await loadFolder(state.folderId); }
 async function loadFolder(id) {
