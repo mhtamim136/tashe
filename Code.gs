@@ -131,7 +131,7 @@ function upload_(e) {
     const file = folder.createFile(blob);
     uploaded.push(fileMeta_(file));
   });
-  clearFolderCache_(folderId);
+  clearFolderAndParentCaches_(folderId);
   return json_({ ok: true, uploaded });
 }
 
@@ -142,7 +142,7 @@ function createFolder_(e) {
   if (isPasswordProtected_(parentId) && !validBodyAccessToken_(body, parentId)) return fail_('Password required', 423);
   const name = sanitizeName_(body.name);
   const folder = DriveApp.getFolderById(parentId).createFolder(name);
-  clearFolderCache_(parentId);
+  clearFolderAndParentCaches_(parentId);
   return json_({ ok: true, folder: folderMeta_(folder) });
 }
 
@@ -150,10 +150,17 @@ function setPassword_(e) {
   const body = body_(e);
   const folderId = cleanId_(body.folderId || body.id);
   assertFolderInRoot_(folderId);
+  if (folderId !== CONFIG.ROOT_FOLDER_ID) {
+    const parent = DriveApp.getFolderById(folderId).getParents();
+    if (parent.hasNext()) {
+      const parentId = parent.next().getId();
+      if (isPasswordProtected_(parentId) && !validBodyAccessToken_(body, parentId)) return fail_('Password required', 423);
+    }
+  }
   const password = String(body.password || '');
   if (password.length < 4 || password.length > 128) return fail_('Password must be 4-128 characters', 400);
   savePassword_(folderId, password);
-  clearFolderCache_(folderId);
+  clearFolderAndParentCaches_(folderId);
   return json_({ ok: true, protected: true, id: folderId });
 }
 
@@ -229,8 +236,16 @@ function assertFileInRoot_(file) {
 function ensureSecureFolderPassword_() {
   const root = DriveApp.getFolderById(CONFIG.ROOT_FOLDER_ID);
   const matches = root.getFoldersByName(CONFIG.SECURE_FOLDER_NAME);
-  const folder = matches.hasNext() ? matches.next() : root.createFolder(CONFIG.SECURE_FOLDER_NAME);
-  if (!isPasswordProtected_(folder.getId())) savePassword_(folder.getId(), CONFIG.SECURE_FOLDER_PASSWORD);
+  let created = false;
+  const folder = matches.hasNext() ? matches.next() : (created = true, root.createFolder(CONFIG.SECURE_FOLDER_NAME));
+  let updatedPassword = false;
+  if (!isPasswordProtected_(folder.getId())) {
+    savePassword_(folder.getId(), CONFIG.SECURE_FOLDER_PASSWORD);
+    updatedPassword = true;
+  }
+  if (created || updatedPassword) {
+    clearFolderAndParentCaches_(folder.getId());
+  }
 }
 
 function savePassword_(folderId, password) {
@@ -263,6 +278,21 @@ function previewUrl_(file) { return 'https://drive.google.com/file/d/' + encodeU
 function detectItemType_(id) { try { DriveApp.getFolderById(id); return 'folder'; } catch (err) { return 'file'; } }
 function extension_(name) { const p = String(name).split('.'); return p.length > 1 ? p.pop().toLowerCase() : ''; }
 function clearFolderCache_(folderId) { CacheService.getScriptCache().remove('contents:' + folderId); }
+function clearFolderAndParentCaches_(folderId) {
+  const cache = CacheService.getScriptCache();
+  cache.remove('contents:' + folderId);
+  try {
+    let current = DriveApp.getFolderById(folderId);
+    let guard = 0;
+    while (guard++ < 50) {
+      const parents = current.getParents();
+      if (!parents.hasNext()) break;
+      current = parents.next();
+      cache.remove('contents:' + current.getId());
+      if (current.getId() === CONFIG.ROOT_FOLDER_ID) break;
+    }
+  } catch (err) {}
+}
 function cleanAction_(value) { return String(value || '').replace(/[^a-zA-Z]/g, ''); }
 function requiredId_(e, key) { const id = cleanId_(param_(e, key)); if (!id) throw new Error('Missing id'); return id; }
 function cleanId_(value) { return String(value || '').replace(/[^a-zA-Z0-9_-]/g, ''); }
