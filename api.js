@@ -9,7 +9,7 @@ class TasheApi {
   openFolder(id, accessToken) { return this.get('openFolder', { id, accessToken }); }
   upload(folderId, files, accessToken) { return this.post('upload', { folderId, files, accessToken }); }
   createFolder(parentId, name, accessToken) { return this.post('createFolder', { parentId, name, accessToken }); }
-  setPassword(folderId, password) { return this.post('setPassword', { folderId, password }); }
+  setPassword(folderId, password, accessToken) { return this.post('setPassword', { folderId, password, accessToken }); }
   verifyPassword(folderId, password) { return this.post('verifyPassword', { folderId, password }); }
   download(id) { return this.get('download', { id }); }
   preview(id) { return this.get('preview', { id }); }
